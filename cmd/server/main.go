@@ -1,27 +1,35 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"log"
-	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/devstroop/ai-gateway-go/internal/handlers"
+	"github.com/devstroop/ai-gateway-go/internal/config"
+	"github.com/devstroop/ai-gateway-go/internal/logging"
+	"github.com/devstroop/ai-gateway-go/internal/server"
 )
 
 func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+	cfgPath := os.Getenv("CONFIG_PATH")
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "config error:", err)
+		os.Exit(1)
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", handlers.Health)
+	logger := logging.New(cfg.LogLevel, nil)
 
-	addr := ":" + port
-	log.Printf("ai-gateway-go listening on %s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatal(err)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	srv := server.New(cfg, logger)
+	if err := srv.ListenAndServe(ctx); err != nil {
+		logger.Error("server stopped", "error", err)
+		stop()
+		os.Exit(1)
 	}
-	_ = fmt.Sprint
+	logger.Info("server stopped gracefully")
 }
