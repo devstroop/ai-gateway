@@ -69,11 +69,6 @@ func extractToken(r *http.Request) string {
 }
 
 func validate(cfg config.Config, token string) (Identity, bool) {
-	for _, k := range cfg.APIKeys {
-		if k != "" && token != "" && subtle.ConstantTimeCompare([]byte(k), []byte(token)) == 1 {
-			return Identity{Name: "legacy", Role: "user", Owner: "legacy", Downstream: fingerprint(token)}, true
-		}
-	}
 	for _, kc := range cfg.Keys {
 		role := kc.Role
 		if role == "" {
@@ -99,11 +94,6 @@ func validate(cfg config.Config, token string) (Identity, bool) {
 		}
 	}
 	return Identity{}, false
-}
-
-func fingerprint(token string) string {
-	sum := sha256.Sum256([]byte(token))
-	return "key:" + hex.EncodeToString(sum[:8])
 }
 
 func writeAuthError(w http.ResponseWriter, status int, code, msg string) {
