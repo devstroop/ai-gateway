@@ -39,6 +39,7 @@ type ProviderConfig struct {
 	Models        []string `toml:"models"`
 	URL           string   `toml:"url"`
 	Authorization string   `toml:"authorization"`
+	Proxy         string   `toml:"proxy"`
 }
 
 type KeyConfig struct {

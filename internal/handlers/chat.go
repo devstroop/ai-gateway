@@ -19,6 +19,8 @@ import (
 
 	"github.com/devstroop/ai-gateway-go/internal/config"
 	"github.com/devstroop/ai-gateway-go/internal/middleware"
+	"github.com/devstroop/ai-gateway-go/internal/proxy"
+	"github.com/devstroop/ai-gateway-go/internal/resilience"
 )
 
 const maxResponseBodyBytes = 100 * 1024 * 1024
@@ -175,6 +177,8 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// (breaker check deferred until just before the upstream call)
+
 	// Rewrite only the top-level model field structurally, preserving nested
 	// JSON values. Leave the body untouched when no rewrite is needed or the
 	// payload is not a JSON object.
@@ -261,15 +265,39 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		req.Header.Set("Authorization", auth)
 	}
 
-	resp, err := h.Client.Do(req)
+	breaker := resilience.Get(provider.ID)
+	if !breaker.Allow() {
+		writeError(w, http.StatusServiceUnavailable, "circuit_open", "Provider temporarily unavailable")
+		return
+	}
+	probeResolved := false
+	defer func() {
+		if !probeResolved {
+			breaker.ReleaseProbe()
+		}
+	}()
+
+	client, perr := proxy.NewClient(provider.Proxy, h.Cfg.Timeout())
+	if perr != nil {
+		breaker.RecordFailure()
+		probeResolved = true
+		h.logger().Error("invalid provider proxy", "error", perr)
+		writeError(w, http.StatusBadGateway, "invalid_proxy", "Provider proxy is misconfigured")
+		return
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		if resp != nil {
 			resp.Body.Close()
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(reqCtx.Err(), context.Canceled) {
+			breaker.ReleaseProbe()
+			probeResolved = true
 			h.logger().Info("client canceled upstream request", "url", redactURL(target))
 			return
 		}
+		breaker.RecordFailure()
+		probeResolved = true
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(reqCtx.Err(), context.DeadlineExceeded) {
 			h.logger().Warn("upstream request timed out", "error", sanitizeError(err, target), "url", redactURL(target))
 			writeError(w, http.StatusGatewayTimeout, "upstream_timeout", "Upstream request timed out")
@@ -280,6 +308,13 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode >= 500 {
+		breaker.RecordFailure()
+	} else {
+		breaker.RecordSuccess()
+	}
+	probeResolved = true
 
 	// Propagate client/context cancellation to the upstream read.
 	done := make(chan struct{})

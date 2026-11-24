@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/devstroop/ai-gateway-go/internal/config"
+	"github.com/devstroop/ai-gateway-go/internal/proxy"
+	"github.com/devstroop/ai-gateway-go/internal/resilience"
 )
 
 type PassthroughHandler struct {
@@ -125,6 +127,7 @@ func (h *PassthroughHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotImplemented, "not_configured", "Provider URL is not configured")
 		return
 	}
+
 	target := upstreamURL + h.Path
 	if r.URL.RawQuery != "" {
 		target += "?" + r.URL.RawQuery
@@ -187,15 +190,42 @@ func (h *PassthroughHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		req.Header.Set("Authorization", auth)
 	}
 
-	resp, err := h.Client.Do(req)
+	breaker := resilience.Get(provider.ID)
+	if !breaker.Allow() {
+		writeError(w, http.StatusServiceUnavailable, "circuit_open", "Provider temporarily unavailable")
+		return
+	}
+	probeResolved := false
+	defer func() {
+		if !probeResolved {
+			breaker.ReleaseProbe()
+		}
+	}()
+
+	client, perr := proxy.NewClient(provider.Proxy, h.Cfg.Timeout())
+	if perr != nil {
+		breaker.RecordFailure()
+		probeResolved = true
+		h.Logger.Error("invalid provider proxy", "error", perr)
+		writeError(w, http.StatusBadGateway, "invalid_proxy", "Provider proxy is misconfigured")
+		return
+	}
+	resp, err := client.Do(req)
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			h.Logger.Warn("upstream request timed out", "error", err, "url", target)
-			writeError(w, http.StatusGatewayTimeout, "upstream_timeout", "Upstream request timed out")
+		if resp != nil {
+			resp.Body.Close()
+		}
+		if errors.Is(err, context.Canceled) || errors.Is(reqCtx.Err(), context.Canceled) {
+			breaker.ReleaseProbe()
+			probeResolved = true
+			h.Logger.Info("upstream request canceled", "error", err, "url", target)
 			return
 		}
-		if errors.Is(err, context.Canceled) {
-			h.Logger.Info("upstream request canceled", "error", err, "url", target)
+		breaker.RecordFailure()
+		probeResolved = true
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(reqCtx.Err(), context.DeadlineExceeded) {
+			h.Logger.Warn("upstream request timed out", "error", err, "url", target)
+			writeError(w, http.StatusGatewayTimeout, "upstream_timeout", "Upstream request timed out")
 			return
 		}
 		h.Logger.Error("upstream request failed", "error", err, "url", target)
@@ -203,6 +233,13 @@ func (h *PassthroughHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode >= 500 {
+		breaker.RecordFailure()
+	} else {
+		breaker.RecordSuccess()
+	}
+	probeResolved = true
 
 	respConnVals := connectionHeaderValues(resp.Header)
 	for k, vals := range resp.Header {
