@@ -3,3 +3,10 @@
 *.test
 *.out
 .env
+
+# SQLite database
+*.db
+
+# SQLite sidecars
+*.db-shm
+*.db-wal
