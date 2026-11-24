@@ -16,11 +16,6 @@ type ServerConfig struct {
 	Port int    `toml:"port"`
 }
 
-type UpstreamConfig struct {
-	URL           string `toml:"url"`
-	Authorization string `toml:"authorization"`
-}
-
 type ApiType string
 
 const (
@@ -51,9 +46,8 @@ type KeyConfig struct {
 }
 
 type Config struct {
-	Server   ServerConfig   `toml:"server"`
-	Upstream UpstreamConfig `toml:"upstream"`
-	LogLevel string         `toml:"log_level"`
+	Server   ServerConfig `toml:"server"`
+	LogLevel string       `toml:"log_level"`
 
 	DefaultModel string `toml:"default_model"`
 	TimeoutMs    int    `toml:"timeout_ms"`
@@ -61,10 +55,9 @@ type Config struct {
 	OwnedBy       string            `toml:"owned_by"`
 	ModelPrefixes []string          `toml:"model_prefixes"`
 	ModelMap      map[string]string `toml:"model_map"`
-	Providers     []ProviderConfig  `toml:"providers"`
+	Providers []ProviderConfig `toml:"providers"`
 
-	APIKeys []string    `toml:"api_keys"`
-	Keys    []KeyConfig `toml:"keys"`
+	Keys []KeyConfig `toml:"keys"`
 }
 
 func Default() Config {
@@ -80,42 +73,42 @@ func Default() Config {
 }
 
 func (c Config) EffectiveProviders() []ProviderConfig {
-	if len(c.Providers) > 0 {
-		out := make([]ProviderConfig, len(c.Providers))
-		copy(out, c.Providers)
-		for i := range out {
-			if out[i].APIType == "" {
-				out[i].APIType = ApiTypeChatCompletions
-			}
-			if out[i].Vendor == "" {
-				out[i].Vendor = "opencode"
-			}
+	if len(c.Providers) == 0 {
+		return nil
+	}
+	out := make([]ProviderConfig, len(c.Providers))
+	copy(out, c.Providers)
+	for i := range out {
+		if out[i].APIType == "" {
+			out[i].APIType = ApiTypeChatCompletions
 		}
-		return out
+		if out[i].Vendor == "" {
+			out[i].Vendor = "opencode"
+		}
 	}
-	if c.Upstream.URL != "" {
-		return []ProviderConfig{{
-			ID:            "default",
-			Vendor:        "opencode",
-			APIType:       ApiTypeChatCompletions,
-			Models:        []string{"*"},
-			URL:           c.Upstream.URL,
-			Authorization: c.Upstream.Authorization,
-		}}
-	}
-	return nil
+	return out
 }
 
 func Load(path string) (Config, error) {
 	cfg := Default()
 	if path != "" {
-		if _, err := os.Stat(path); err != nil {
+		raw, err := os.ReadFile(path)
+		if err != nil {
 			if os.IsNotExist(err) {
 				return Config{}, fmt.Errorf("config file not found: %s", path)
 			}
-			return Config{}, fmt.Errorf("stat config %s: %w", path, err)
+			return Config{}, fmt.Errorf("read config %s: %w", path, err)
 		}
-		if _, err := toml.DecodeFile(path, &cfg); err != nil {
+		var rawCfg map[string]any
+		if _, err := toml.Decode(string(raw), &rawCfg); err == nil {
+			if _, ok := rawCfg["upstream"]; ok {
+				fmt.Println("WARN: [upstream] section is no longer supported; configure providers via [[providers]]")
+			}
+			if _, ok := rawCfg["api_keys"]; ok {
+				fmt.Println("WARN: api_keys is no longer supported; use [[keys]]")
+			}
+		}
+		if _, err := toml.Decode(string(raw), &cfg); err != nil {
 			return Config{}, fmt.Errorf("parse config %s: %w", path, err)
 		}
 	}
@@ -161,19 +154,6 @@ func (c Config) Validate() error {
 			return fmt.Errorf("model_prefixes[%d] must not have surrounding whitespace", i)
 		}
 	}
-	if len(c.Providers) == 0 && c.Upstream.URL != "" {
-		u, err := url.ParseRequestURI(c.Upstream.URL)
-		if err != nil {
-			return fmt.Errorf("invalid upstream url: %w", err)
-		}
-		if u.Scheme != "http" && u.Scheme != "https" {
-			return fmt.Errorf("invalid upstream url scheme: %s", u.Scheme)
-		}
-		if u.Host == "" {
-			return fmt.Errorf("invalid upstream url: missing host")
-		}
-	}
-
 	for k, v := range c.ModelMap {
 		if strings.TrimSpace(k) == "" {
 			return fmt.Errorf("model_map key must not be empty")
@@ -262,11 +242,6 @@ func (c Config) Validate() error {
 }
 
 func (c Config) HasAuth() bool {
-	for _, k := range c.APIKeys {
-		if k != "" {
-			return true
-		}
-	}
 	for _, kc := range c.Keys {
 		if kc.Key != "" || kc.KeyHash != "" {
 			return true
