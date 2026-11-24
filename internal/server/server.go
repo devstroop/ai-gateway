@@ -16,11 +16,13 @@ import (
 	"github.com/devstroop/ai-gateway-go/internal/handlers"
 	"github.com/devstroop/ai-gateway-go/internal/health"
 	"github.com/devstroop/ai-gateway-go/internal/middleware"
+	"github.com/devstroop/ai-gateway-go/internal/storage"
 )
 
 type Server struct {
 	cfg    config.Config
 	logger *slog.Logger
+	db     *storage.DB
 	http   *http.Server
 }
 
@@ -40,13 +42,40 @@ func New(cfg config.Config, logger *slog.Logger) *Server {
 	if err := adminStore.Bootstrap(os.Getenv("GATEWAY_ADMIN_USERNAME"), os.Getenv("GATEWAY_ADMIN_PASSWORD")); err != nil {
 		logger.Warn("admin bootstrap failed", "error", err)
 	}
-	adminHandlers := handlers.NewAdminHandlers(adminStore)
+
+	dbPath := os.Getenv("GATEWAY_DB_PATH")
+	if dbPath == "" {
+		dbPath = "gateway.db"
+	}
+	db, err := storage.Open(dbPath)
+	var runtimeSettings *storage.RuntimeSettings
+	if err != nil {
+		logger.Warn("storage open failed", "error", err)
+	} else {
+		runtimeSettings = storage.NewRuntimeSettings(db)
+	}
+	adminHandlers := handlers.NewAdminHandlers(adminStore, runtimeSettings)
+
+	s := &Server{cfg: cfg, logger: logger, db: db}
 
 	mux.HandleFunc("/api/admin/setup/status", adminHandlers.SetupStatus)
 	mux.HandleFunc("/api/admin/setup", adminHandlers.Setup)
 	mux.HandleFunc("/api/admin/auth/login", adminHandlers.Login)
 	mux.HandleFunc("/api/admin/auth/session", adminHandlers.Session)
 	mux.HandleFunc("/api/admin/auth/logout", adminHandlers.Logout)
+	mux.HandleFunc("/api/admin/runtime", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			adminHandlers.GetRuntime(w, r)
+		case http.MethodPut:
+			adminHandlers.PutRuntime(w, r)
+		case http.MethodDelete:
+			adminHandlers.DeleteRuntime(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
 	mux.HandleFunc("/api/admin/users", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			if !adminHandlers.RequireAdmin(w, r) {
@@ -80,7 +109,6 @@ func New(cfg config.Config, logger *slog.Logger) *Server {
 	handler = middleware.RequestID(handler)
 	handler = middleware.Recover(logger)(handler)
 
-	s := &Server{cfg: cfg, logger: logger}
 	s.http = &http.Server{
 		Addr:              net.JoinHostPort(cfg.Server.Host, strconv.Itoa(cfg.Server.Port)),
 		Handler:           handler,
@@ -108,10 +136,19 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		if err := s.http.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			if s.db != nil {
+				s.db.Close()
+			}
 			return err
 		}
 		if err := <-errCh; err != nil && !errors.Is(err, http.ErrServerClosed) {
+			if s.db != nil {
+				s.db.Close()
+			}
 			return err
+		}
+		if s.db != nil {
+			s.db.Close()
 		}
 		return nil
 	}

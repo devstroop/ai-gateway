@@ -13,14 +13,16 @@ import (
 	"time"
 
 	"github.com/devstroop/ai-gateway-go/internal/admin"
+	"github.com/devstroop/ai-gateway-go/internal/storage"
 )
 
 type AdminHandlers struct {
-	Store *admin.Store
+	Store   *admin.Store
+	Runtime *storage.RuntimeSettings
 }
 
-func NewAdminHandlers(store *admin.Store) *AdminHandlers {
-	return &AdminHandlers{Store: store}
+func NewAdminHandlers(store *admin.Store, runtime *storage.RuntimeSettings) *AdminHandlers {
+	return &AdminHandlers{Store: store, Runtime: runtime}
 }
 
 func (h *AdminHandlers) Login(w http.ResponseWriter, r *http.Request) {
@@ -300,6 +302,70 @@ func clientIP(r *http.Request) string {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+func (h *AdminHandlers) GetRuntime(w http.ResponseWriter, r *http.Request) {
+	if !h.RequireAdmin(w, r) {
+		return
+	}
+	if h.Runtime == nil {
+		writeError(w, http.StatusNotImplemented, "not_configured", "Runtime storage not configured")
+		return
+	}
+	dm, found, err := h.Runtime.Get("default_model")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "storage_error", "Failed to read runtime settings")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"default_model": dm,
+		"found":         found,
+	})
+}
+
+func (h *AdminHandlers) PutRuntime(w http.ResponseWriter, r *http.Request) {
+	if !h.RequireAdmin(w, r) {
+		return
+	}
+	if h.Runtime == nil {
+		writeError(w, http.StatusNotImplemented, "not_configured", "Runtime storage not configured")
+		return
+	}
+	var req struct {
+		DefaultModel string `json:"default_model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON")
+		return
+	}
+	if req.DefaultModel == "" {
+		if err := h.Runtime.Delete("default_model"); err != nil {
+			writeError(w, http.StatusInternalServerError, "storage_error", "Failed to store")
+			return
+		}
+	} else {
+		if err := h.Runtime.Set("default_model", req.DefaultModel); err != nil {
+			writeError(w, http.StatusInternalServerError, "storage_error", "Failed to store")
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *AdminHandlers) DeleteRuntime(w http.ResponseWriter, r *http.Request) {
+	if !h.RequireAdmin(w, r) {
+		return
+	}
+	if h.Runtime == nil {
+		writeError(w, http.StatusNotImplemented, "not_configured", "Runtime storage not configured")
+		return
+	}
+	if err := h.Runtime.Delete("default_model"); err != nil {
+		writeError(w, http.StatusInternalServerError, "storage_error", "Failed to delete runtime setting")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *AdminHandlers) withAdmin(next http.HandlerFunc) http.HandlerFunc {
