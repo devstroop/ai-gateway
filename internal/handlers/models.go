@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/devstroop/ai-gateway-go/internal/config"
 )
@@ -67,6 +68,32 @@ func (h *ModelsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	}
+	// Embedding models are advertised as bare ids owned by the gateway.
+	// Providers with "*" or empty model lists contribute no discoverable
+	// entries (they act as catch-alls at request time).
+	for _, p := range h.Cfg.EffectiveProviders() {
+		if p.APIType != config.ApiTypeEmbeddings {
+			continue
+		}
+		if strings.TrimSpace(p.URL) == "" {
+			continue
+		}
+		for _, m := range p.Models {
+			if m == "*" {
+				continue
+			}
+			if seen[m] {
+				continue
+			}
+			seen[m] = true
+			entries = append(entries, ModelEntry{
+				ID:      m,
+				Object:  "model",
+				OwnedBy: ownedBy,
+			})
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]any{
 		"object": "list",
