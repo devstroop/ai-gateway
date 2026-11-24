@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -44,15 +44,15 @@ func NewChatHandler(cfg config.Config, logger *slog.Logger) *ChatHandler {
 		}).DialContext,
 		ResponseHeaderTimeout: 0, // disabled; request context governs timeouts
 		IdleConnTimeout:       90 * time.Second,
-		MaxIdleConns:         100,
-		MaxIdleConnsPerHost:  100,
-		DisableCompression:   true,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   100,
+		DisableCompression:    true,
 	}
 	return &ChatHandler{
 		Cfg:    cfg,
 		Logger: logger,
 		Client: &http.Client{
-			Transport:     transport,
+			Transport: transport,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				return http.ErrUseLastResponse
 			},
@@ -463,7 +463,6 @@ func selectProvider(cfg config.Config, model string) (config.ProviderConfig, boo
 	return config.ProviderConfig{}, false
 }
 
-
 func rewriteModelFieldJSON(body []byte, newModel string) ([]byte, bool) {
 	start, end, ok := findTopLevelModelValue(body)
 	if !ok || start >= len(body) || body[start] != '"' {
@@ -476,8 +475,6 @@ func rewriteModelFieldJSON(body []byte, newModel string) ([]byte, bool) {
 	out = append(out, body[end:]...)
 	return out, true
 }
-
-
 
 func injectModelField(body []byte, newModel string) ([]byte, bool) {
 	i := 0
@@ -546,7 +543,6 @@ func injectModelField(body []byte, newModel string) ([]byte, bool) {
 	out = append(out, body[closeIdx:]...)
 	return out, true
 }
-
 
 func countTopLevelKeys(body []byte, keyName string) int {
 	count := 0
@@ -644,10 +640,10 @@ var hopByHopHeaders = map[string]struct{}{
 	"Keep-Alive":          {},
 	"Proxy-Authenticate":  {},
 	"Proxy-Authorization": {},
-	"Te":                 {},
-	"Trailers":           {},
-	"Transfer-Encoding":  {},
-	"Upgrade":            {},
+	"Te":                  {},
+	"Trailers":            {},
+	"Transfer-Encoding":   {},
+	"Upgrade":             {},
 }
 
 func isForwardingHeader(name string) bool {

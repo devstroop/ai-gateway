@@ -55,7 +55,7 @@ type Config struct {
 	OwnedBy       string            `toml:"owned_by"`
 	ModelPrefixes []string          `toml:"model_prefixes"`
 	ModelMap      map[string]string `toml:"model_map"`
-	Providers []ProviderConfig `toml:"providers"`
+	Providers     []ProviderConfig  `toml:"providers"`
 
 	Keys []KeyConfig `toml:"keys"`
 }

@@ -35,6 +35,7 @@ type Session struct {
 }
 
 var ErrSetupComplete = errors.New("setup already completed")
+
 type Store struct {
 	mu       sync.RWMutex
 	setupMu  sync.Mutex

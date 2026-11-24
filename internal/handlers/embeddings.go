@@ -3,8 +3,8 @@ package handlers
 import (
 	"bytes"
 	"context"
-	"errors"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"

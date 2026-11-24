@@ -3,10 +3,10 @@ package middleware
 import (
 	"bufio"
 	"context"
-	"io"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
