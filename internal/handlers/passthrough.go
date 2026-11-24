@@ -186,8 +186,6 @@ func (h *PassthroughHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	req.Header.Set("Content-Type", "application/json")
 	if auth := provider.Authorization; auth != "" {
 		req.Header.Set("Authorization", auth)
-	} else if auth := h.Cfg.Upstream.Authorization; auth != "" {
-		req.Header.Set("Authorization", auth)
 	}
 
 	breaker := resilience.Get(provider.ID)

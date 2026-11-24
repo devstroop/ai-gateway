@@ -147,8 +147,6 @@ func (h *EmbeddingsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	req.Header.Set("Content-Type", "application/json")
 	if auth := selected.Authorization; auth != "" {
 		req.Header.Set("Authorization", auth)
-	} else if auth := h.Cfg.Upstream.Authorization; auth != "" {
-		req.Header.Set("Authorization", auth)
 	}
 
 	client, err := proxy.NewClient(selected.Proxy, h.Cfg.Timeout())
