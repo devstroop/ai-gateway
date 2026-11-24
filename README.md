@@ -35,4 +35,4 @@ go test ./...
 ```
 ## Admin store persistence
 
-The admin store is in-memory. Admin accounts created via the setup flow are lost on restart unless bootstrapped via `GATEWAY_ADMIN_USERNAME` / `GATEWAY_ADMIN_PASSWORD`. Persistence is planned for a later phase.
+The admin store is in-memory. Admin accounts are created via the first-run setup flow at `/admin` (one-time; once an admin exists, setup is disabled). `GATEWAY_ADMIN_USERNAME`/`GATEWAY_ADMIN_PASSWORD` are no longer supported. Persistence is planned for a later phase.

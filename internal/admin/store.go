@@ -35,9 +35,6 @@ type Session struct {
 }
 
 var ErrSetupComplete = errors.New("setup already completed")
-var ErrBootstrapEmpty = errors.New("bootstrap credentials are empty")
-var ErrAlreadyInitialized = errors.New("admin store already initialized")
-
 type Store struct {
 	mu       sync.RWMutex
 	setupMu  sync.Mutex
@@ -47,29 +44,6 @@ type Store struct {
 
 func NewStore() *Store {
 	return &Store{users: map[string]*User{}, sessions: map[string]*Session{}}
-}
-
-func (s *Store) Bootstrap(username, password string) error {
-	if username == "" || password == "" {
-		return ErrBootstrapEmpty
-	}
-	s.mu.RLock()
-	if len(s.users) > 0 {
-		s.mu.RUnlock()
-		return ErrAlreadyInitialized
-	}
-	s.mu.RUnlock()
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if len(s.users) > 0 {
-		return ErrAlreadyInitialized
-	}
-	s.users[username] = &User{ID: username, Username: username, PasswordHash: string(hash), Role: "admin"}
-	return nil
 }
 
 func (s *Store) Authenticate(username, password string) (User, bool) {

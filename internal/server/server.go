@@ -42,8 +42,9 @@ func New(cfg config.Config, logger *slog.Logger) *Server {
 	mux.HandleFunc("/v1/auth/whoami", handlers.Whoami)
 
 	adminStore := admin.NewStore()
-	if err := adminStore.Bootstrap(os.Getenv("GATEWAY_ADMIN_USERNAME"), os.Getenv("GATEWAY_ADMIN_PASSWORD")); err != nil {
-		logger.Warn("admin bootstrap failed", "error", err)
+
+	if os.Getenv("GATEWAY_ADMIN_USERNAME") != "" || os.Getenv("GATEWAY_ADMIN_PASSWORD") != "" {
+		logger.Warn("GATEWAY_ADMIN_USERNAME/PASSWORD are no longer supported; create the initial admin via the /admin first-run setup flow")
 	}
 
 	dbPath := os.Getenv("GATEWAY_DB_PATH")
