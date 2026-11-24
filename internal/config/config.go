@@ -21,6 +21,26 @@ type UpstreamConfig struct {
 	Authorization string `toml:"authorization"`
 }
 
+type ApiType string
+
+const (
+	ApiTypeChatCompletions ApiType = "chat-completions"
+	ApiTypeMessages        ApiType = "messages"
+	ApiTypeResponses       ApiType = "responses"
+	ApiTypeSystemone       ApiType = "systemone"
+	ApiTypeEmbeddings      ApiType = "embeddings"
+	ApiTypeModerations     ApiType = "moderations"
+)
+
+type ProviderConfig struct {
+	ID            string   `toml:"id"`
+	Vendor        string   `toml:"vendor"`
+	APIType       ApiType  `toml:"api_type"`
+	Models        []string `toml:"models"`
+	URL           string   `toml:"url"`
+	Authorization string   `toml:"authorization"`
+}
+
 type Config struct {
 	Server   ServerConfig   `toml:"server"`
 	Upstream UpstreamConfig `toml:"upstream"`
@@ -28,15 +48,50 @@ type Config struct {
 
 	DefaultModel string `toml:"default_model"`
 	TimeoutMs    int    `toml:"timeout_ms"`
+
+	OwnedBy     string                    `toml:"owned_by"`
+	ModelPrefixes []string                `toml:"model_prefixes"`
+	ModelMap    map[string]string         `toml:"model_map"`
+	Providers   []ProviderConfig          `toml:"providers"`
 }
 
 func Default() Config {
 	return Config{
-		Server:       ServerConfig{Host: "0.0.0.0", Port: 8080},
-		LogLevel:     "info",
-		DefaultModel: "default",
-		TimeoutMs:    30000,
+		Server:        ServerConfig{Host: "0.0.0.0", Port: 8080},
+		LogLevel:      "info",
+		DefaultModel:  "default",
+		TimeoutMs:     30000,
+		OwnedBy:       "ai-gateway-go",
+		ModelMap:      map[string]string{},
+		ModelPrefixes: []string{},
 	}
+}
+
+func (c Config) EffectiveProviders() []ProviderConfig {
+	if len(c.Providers) > 0 {
+		out := make([]ProviderConfig, len(c.Providers))
+		copy(out, c.Providers)
+		for i := range out {
+			if out[i].APIType == "" {
+				out[i].APIType = ApiTypeChatCompletions
+			}
+			if out[i].Vendor == "" {
+				out[i].Vendor = "opencode"
+			}
+		}
+		return out
+	}
+	if c.Upstream.URL != "" {
+		return []ProviderConfig{{
+			ID:            "default",
+			Vendor:        "opencode",
+			APIType:       ApiTypeChatCompletions,
+			Models:        []string{"*"},
+			URL:           c.Upstream.URL,
+			Authorization: c.Upstream.Authorization,
+		}}
+	}
+	return nil
 }
 
 func Load(path string) (Config, error) {
@@ -86,7 +141,15 @@ func (c Config) Validate() error {
 	if c.TimeoutMs < 1000 || c.TimeoutMs > 300000 {
 		return fmt.Errorf("invalid timeout_ms: %d", c.TimeoutMs)
 	}
-	if c.Upstream.URL != "" {
+	for i, p := range c.ModelPrefixes {
+		if strings.TrimSpace(p) == "" {
+			return fmt.Errorf("model_prefixes[%d] must not be empty", i)
+		}
+		if p != strings.TrimSpace(p) {
+			return fmt.Errorf("model_prefixes[%d] must not have surrounding whitespace", i)
+		}
+	}
+	if len(c.Providers) == 0 && c.Upstream.URL != "" {
 		u, err := url.ParseRequestURI(c.Upstream.URL)
 		if err != nil {
 			return fmt.Errorf("invalid upstream url: %w", err)
@@ -96,6 +159,91 @@ func (c Config) Validate() error {
 		}
 		if u.Host == "" {
 			return fmt.Errorf("invalid upstream url: missing host")
+		}
+	}
+
+	for k, v := range c.ModelMap {
+		if strings.TrimSpace(k) == "" {
+			return fmt.Errorf("model_map key must not be empty")
+		}
+		if strings.TrimSpace(v) == "" {
+			return fmt.Errorf("model_map value for %q must not be empty", k)
+		}
+		if k != strings.TrimSpace(k) || v != strings.TrimSpace(v) {
+			return fmt.Errorf("model_map key/value must not have surrounding whitespace")
+		}
+	}
+	seen := map[string]bool{}
+	for i, p := range c.Providers {
+		if p.ID == "" {
+			return fmt.Errorf("providers[%d]: id is required", i)
+		}
+		if seen[p.ID] {
+			return fmt.Errorf("duplicate provider id: %s", p.ID)
+		}
+		seen[p.ID] = true
+		if p.URL == "" {
+			return fmt.Errorf("providers[%d] (%s): url is required", i, p.ID)
+		}
+		u, err := url.ParseRequestURI(p.URL)
+		if err != nil {
+			return fmt.Errorf("providers[%d] (%s): invalid url: %w", i, p.ID, err)
+		}
+		if u.Scheme != "http" && u.Scheme != "https" {
+			return fmt.Errorf("providers[%d] (%s): invalid url scheme: %s", i, p.ID, u.Scheme)
+		}
+		if u.Host == "" {
+			return fmt.Errorf("providers[%d] (%s): invalid url: missing host", i, p.ID)
+		}
+		if p.APIType != "" {
+			switch p.APIType {
+			case ApiTypeChatCompletions, ApiTypeMessages, ApiTypeResponses, ApiTypeSystemone, ApiTypeEmbeddings, ApiTypeModerations:
+			default:
+				return fmt.Errorf("providers[%d] (%s): unknown api_type: %s", i, p.ID, p.APIType)
+			}
+		}
+		apiType := p.APIType
+		if apiType == "" {
+			apiType = ApiTypeChatCompletions
+		}
+		for j, m := range p.Models {
+			if strings.TrimSpace(m) == "" {
+				return fmt.Errorf("providers[%d] (%s): models[%d] must not be empty", i, p.ID, j)
+			}
+			if m != strings.TrimSpace(m) {
+				return fmt.Errorf("providers[%d] (%s): models[%d] must not have surrounding whitespace", i, p.ID, j)
+			}
+		}
+		if apiType == ApiTypeChatCompletions {
+			if len(p.Models) == 0 {
+				return fmt.Errorf("providers[%d] (%s): chat provider must declare at least one model or \"*\"", i, p.ID)
+			}
+		}
+	}
+
+	// Reject duplicate model claims among chat-completion providers.
+	modelOwners := map[string]string{}
+	catchAllCount := 0
+	for _, p := range c.Providers {
+		apiType := p.APIType
+		if apiType == "" {
+			apiType = ApiTypeChatCompletions
+		}
+		if apiType != ApiTypeChatCompletions {
+			continue
+		}
+		for _, m := range p.Models {
+			if m == "*" {
+				catchAllCount++
+				if catchAllCount > 1 {
+					return fmt.Errorf("multiple catch-all (\"*\") chat providers: %s", p.ID)
+				}
+				continue
+			}
+			if prev, ok := modelOwners[m]; ok {
+				return fmt.Errorf("model %q claimed by multiple providers: %s, %s", m, prev, p.ID)
+			}
+			modelOwners[m] = p.ID
 		}
 	}
 	return nil
