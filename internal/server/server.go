@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/devstroop/ai-gateway-go/internal/auth"
 	"github.com/devstroop/ai-gateway-go/internal/config"
 	"github.com/devstroop/ai-gateway-go/internal/handlers"
 	"github.com/devstroop/ai-gateway-go/internal/health"
@@ -31,6 +32,7 @@ func New(cfg config.Config, logger *slog.Logger) *Server {
 
 	modelsHandler := handlers.NewModelsHandler(cfg, logger)
 	mux.HandleFunc("/v1/models", modelsHandler.ServeHTTP)
+	mux.HandleFunc("/v1/auth/whoami", handlers.Whoami)
 
 	messagesHandler := handlers.NewPassthroughHandler(cfg, logger, "/messages", []config.ApiType{config.ApiTypeMessages})
 	mux.HandleFunc("/v1/messages", messagesHandler.ServeHTTP)
@@ -42,7 +44,8 @@ func New(cfg config.Config, logger *slog.Logger) *Server {
 	// Recover is outermost to catch panics from RequestID; Logging folds its own
 	// recovery for the inner chain. RequestID must wrap Logging so the request
 	// context carries the id. Do not reorder.
-	handler := middleware.Logging(logger)(mux)
+	handler := auth.Middleware(cfg)(mux)
+	handler = middleware.Logging(logger)(handler)
 	handler = middleware.RequestID(handler)
 	handler = middleware.Recover(logger)(handler)
 
