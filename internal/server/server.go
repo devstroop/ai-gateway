@@ -32,6 +32,12 @@ func New(cfg config.Config, logger *slog.Logger) *Server {
 	modelsHandler := handlers.NewModelsHandler(cfg, logger)
 	mux.HandleFunc("/v1/models", modelsHandler.ServeHTTP)
 
+	messagesHandler := handlers.NewPassthroughHandler(cfg, logger, "/messages", []config.ApiType{config.ApiTypeMessages})
+	mux.HandleFunc("/v1/messages", messagesHandler.ServeHTTP)
+
+	responsesHandler := handlers.NewPassthroughHandler(cfg, logger, "/responses", []config.ApiType{config.ApiTypeResponses})
+	mux.HandleFunc("/v1/responses", responsesHandler.ServeHTTP)
+
 	// Middleware order (outermost -> innermost): Recover -> RequestID -> Logging -> mux.
 	// Recover is outermost to catch panics from RequestID; Logging folds its own
 	// recovery for the inner chain. RequestID must wrap Logging so the request
