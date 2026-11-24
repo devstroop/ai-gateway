@@ -22,8 +22,14 @@ func TestChatProxy(t *testing.T) {
 	defer upstream.Close()
 
 	cfg := config.Default()
-	cfg.Upstream.URL = upstream.URL
-	cfg.Upstream.Authorization = "Bearer test"
+	cfg.Providers = []config.ProviderConfig{{
+		ID:            "default",
+		Vendor:        "openai",
+		APIType:       config.ApiTypeChatCompletions,
+		Models:        []string{"*"},
+		URL:           upstream.URL,
+		Authorization: "Bearer test",
+	}}
 
 	h := NewChatHandler(cfg, nil)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-4o-mini","messages":[]}`))
