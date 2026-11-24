@@ -41,6 +41,14 @@ type ProviderConfig struct {
 	Authorization string   `toml:"authorization"`
 }
 
+type KeyConfig struct {
+	Name    string `toml:"name"`
+	Key     string `toml:"key"`
+	KeyHash string `toml:"key_hash"`
+	Role    string `toml:"role"`
+	Owner   string `toml:"owner"`
+}
+
 type Config struct {
 	Server   ServerConfig   `toml:"server"`
 	Upstream UpstreamConfig `toml:"upstream"`
@@ -49,10 +57,13 @@ type Config struct {
 	DefaultModel string `toml:"default_model"`
 	TimeoutMs    int    `toml:"timeout_ms"`
 
-	OwnedBy     string                    `toml:"owned_by"`
-	ModelPrefixes []string                `toml:"model_prefixes"`
-	ModelMap    map[string]string         `toml:"model_map"`
-	Providers   []ProviderConfig          `toml:"providers"`
+	OwnedBy       string            `toml:"owned_by"`
+	ModelPrefixes []string          `toml:"model_prefixes"`
+	ModelMap      map[string]string `toml:"model_map"`
+	Providers     []ProviderConfig  `toml:"providers"`
+
+	APIKeys []string    `toml:"api_keys"`
+	Keys    []KeyConfig `toml:"keys"`
 }
 
 func Default() Config {
@@ -247,6 +258,20 @@ func (c Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+func (c Config) HasAuth() bool {
+	for _, k := range c.APIKeys {
+		if k != "" {
+			return true
+		}
+	}
+	for _, kc := range c.Keys {
+		if kc.Key != "" || kc.KeyHash != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (c Config) Timeout() time.Duration {
