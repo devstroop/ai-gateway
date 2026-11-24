@@ -36,6 +36,9 @@ func New(cfg config.Config, logger *slog.Logger) *Server {
 
 	modelsHandler := handlers.NewModelsHandler(cfg, logger)
 	mux.HandleFunc("/v1/models", modelsHandler.ServeHTTP)
+
+	embeddingsHandler := handlers.NewEmbeddingsHandler(cfg, logger)
+	mux.HandleFunc("/v1/embeddings", embeddingsHandler.ServeHTTP)
 	mux.HandleFunc("/v1/auth/whoami", handlers.Whoami)
 
 	adminStore := admin.NewStore()
