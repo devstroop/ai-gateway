@@ -33,3 +33,6 @@ go build -o bin/ai-gateway-go ./cmd/server
 ```bash
 go test ./...
 ```
+## Admin store persistence
+
+The admin store is in-memory. Admin accounts created via the setup flow are lost on restart unless bootstrapped via `GATEWAY_ADMIN_USERNAME` / `GATEWAY_ADMIN_PASSWORD`. Persistence is planned for a later phase.
