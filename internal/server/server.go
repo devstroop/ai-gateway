@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/devstroop/ai-gateway-go/internal/config"
+	"github.com/devstroop/ai-gateway-go/internal/handlers"
 	"github.com/devstroop/ai-gateway-go/internal/health"
 	"github.com/devstroop/ai-gateway-go/internal/middleware"
 )
@@ -24,6 +25,9 @@ func New(cfg config.Config, logger *slog.Logger) *Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", health.Health)
 	mux.HandleFunc("/ready", health.ReadyHandler(nil))
+
+	chatHandler := handlers.NewChatHandler(cfg, logger)
+	mux.HandleFunc("/v1/chat/completions", chatHandler.ServeHTTP)
 
 	// Middleware order (outermost -> innermost): Recover -> RequestID -> Logging -> mux.
 	// Recover is outermost to catch panics from RequestID; Logging folds its own
