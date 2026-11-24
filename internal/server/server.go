@@ -6,9 +6,11 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
+	"github.com/devstroop/ai-gateway-go/internal/admin"
 	"github.com/devstroop/ai-gateway-go/internal/auth"
 	"github.com/devstroop/ai-gateway-go/internal/config"
 	"github.com/devstroop/ai-gateway-go/internal/handlers"
@@ -33,6 +35,35 @@ func New(cfg config.Config, logger *slog.Logger) *Server {
 	modelsHandler := handlers.NewModelsHandler(cfg, logger)
 	mux.HandleFunc("/v1/models", modelsHandler.ServeHTTP)
 	mux.HandleFunc("/v1/auth/whoami", handlers.Whoami)
+
+	adminStore := admin.NewStore()
+	if err := adminStore.Bootstrap(os.Getenv("GATEWAY_ADMIN_USERNAME"), os.Getenv("GATEWAY_ADMIN_PASSWORD")); err != nil {
+		logger.Warn("admin bootstrap failed", "error", err)
+	}
+	adminHandlers := handlers.NewAdminHandlers(adminStore)
+
+	mux.HandleFunc("/api/admin/setup/status", adminHandlers.SetupStatus)
+	mux.HandleFunc("/api/admin/setup", adminHandlers.Setup)
+	mux.HandleFunc("/api/admin/auth/login", adminHandlers.Login)
+	mux.HandleFunc("/api/admin/auth/session", adminHandlers.Session)
+	mux.HandleFunc("/api/admin/auth/logout", adminHandlers.Logout)
+	mux.HandleFunc("/api/admin/users", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			if !adminHandlers.RequireAdmin(w, r) {
+				return
+			}
+			adminHandlers.ListUsers(w, r)
+			return
+		}
+		if r.Method == http.MethodPost {
+			if !adminHandlers.RequireAdmin(w, r) {
+				return
+			}
+			adminHandlers.CreateUser(w, r)
+			return
+		}
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	})
 
 	messagesHandler := handlers.NewPassthroughHandler(cfg, logger, "/messages", []config.ApiType{config.ApiTypeMessages})
 	mux.HandleFunc("/v1/messages", messagesHandler.ServeHTTP)
