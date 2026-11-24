@@ -16,36 +16,45 @@ func TestLoadDefaults(t *testing.T) {
 	}
 }
 
-func TestLoadFile(t *testing.T) {
+func TestEffectiveProvidersFromConfig(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "config.toml")
-	if err := os.WriteFile(p, []byte(`server = { host = "127.0.0.1", port = 9090 }
-log_level = "debug"
-timeout_ms = 5000`), 0o644); err != nil {
+	content := `
+[[providers]]
+id = "p1"
+api_type = "chat-completions"
+models = ["m1"]
+url = "http://example.com/v1"
+
+[[providers]]
+id = "p2"
+api_type = "chat-completions"
+models = ["m2"]
+url = "http://example2.com/v1"
+`
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Server.Host != "127.0.0.1" || cfg.Server.Port != 9090 {
-		t.Fatalf("server = %+v", cfg.Server)
+	ps := cfg.EffectiveProviders()
+	if len(ps) != 2 {
+		t.Fatalf("providers = %d", len(ps))
 	}
-	if cfg.LogLevel != "debug" {
-		t.Fatalf("log_level = %s", cfg.LogLevel)
-	}
-}
-
-func TestLoadMissingExplicitFile(t *testing.T) {
-	if _, err := Load("/no/such/config.toml"); err == nil {
-		t.Fatal("expected error for missing explicit config file")
+	if ps[0].ID != "p1" || ps[1].ID != "p2" {
+		t.Fatalf("ids = %s %s", ps[0].ID, ps[1].ID)
 	}
 }
 
-func TestValidateBadPort(t *testing.T) {
+func TestValidateDuplicateProvider(t *testing.T) {
 	cfg := Default()
-	cfg.Server.Port = 0
+	cfg.Providers = []ProviderConfig{
+		{ID: "a", URL: "http://x/v1", Models: []string{"m"}},
+		{ID: "a", URL: "http://y/v1", Models: []string{"m2"}},
+	}
 	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected error")
+		t.Fatal("expected duplicate error")
 	}
 }

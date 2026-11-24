@@ -29,6 +29,9 @@ func New(cfg config.Config, logger *slog.Logger) *Server {
 	chatHandler := handlers.NewChatHandler(cfg, logger)
 	mux.HandleFunc("/v1/chat/completions", chatHandler.ServeHTTP)
 
+	modelsHandler := handlers.NewModelsHandler(cfg, logger)
+	mux.HandleFunc("/v1/models", modelsHandler.ServeHTTP)
+
 	// Middleware order (outermost -> innermost): Recover -> RequestID -> Logging -> mux.
 	// Recover is outermost to catch panics from RequestID; Logging folds its own
 	// recovery for the inner chain. RequestID must wrap Logging so the request

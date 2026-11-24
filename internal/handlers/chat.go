@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"net/url"
 
+	"strconv"
+
 	"strings"
 	"time"
 
@@ -63,9 +65,15 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	upstreamURL := strings.TrimRight(h.Cfg.Upstream.URL, "/")
-	if upstreamURL == "" {
-		writeError(w, http.StatusNotImplemented, "not_configured", "Upstream is not configured")
+	hasChatProvider := false
+	for _, p := range h.Cfg.EffectiveProviders() {
+		if p.APIType == "" || p.APIType == config.ApiTypeChatCompletions {
+			hasChatProvider = true
+			break
+		}
+	}
+	if !hasChatProvider {
+		writeError(w, http.StatusNotImplemented, "not_configured", "No chat provider configured")
 		return
 	}
 
@@ -94,6 +102,98 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if len(body) == 0 {
 		writeError(w, http.StatusBadRequest, "invalid_request", "Empty request body")
 		return
+	}
+
+	// Validate that the request body is a JSON object before routing.
+	var bodyObj map[string]any
+	if err := json.Unmarshal(body, &bodyObj); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "Request body must be a JSON object")
+		return
+	}
+	if bodyObj == nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "Request body must be a JSON object")
+		return
+	}
+	// Reject non-string model values to avoid type mismatches during rewriting.
+	if v, ok := bodyObj["model"]; ok {
+		if _, ok := v.(string); !ok {
+			writeError(w, http.StatusBadRequest, "invalid_request", "model must be a string")
+			return
+		}
+	}
+	// Reject duplicate top-level model keys to avoid ambiguous rewrites.
+	if countTopLevelKeys(body, "model") > 1 {
+		writeError(w, http.StatusBadRequest, "invalid_request", "duplicate top-level model field")
+		return
+	}
+
+	// Determine requested model for routing.
+	var routeModel string
+	if v, ok := bodyObj["model"].(string); ok {
+		routeModel = v
+	}
+	requestedModel := routeModel
+	if routeModel == "" {
+		routeModel = h.Cfg.DefaultModel
+	}
+	if routeModel == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "model is required")
+		return
+	}
+	// Apply at most one matching prefix (the longest) to avoid cascading
+	// transformations.
+	best := ""
+	for _, p := range h.Cfg.ModelPrefixes {
+		if p == "" {
+			continue
+		}
+		if strings.HasPrefix(routeModel, p) && len(p) > len(best) {
+			best = p
+		}
+	}
+	if best != "" {
+		routeModel = strings.TrimPrefix(routeModel, best)
+		routeModel = strings.TrimPrefix(routeModel, "/")
+	}
+	if m, ok := h.Cfg.ModelMap[routeModel]; ok {
+		routeModel = m
+	}
+	if strings.TrimSpace(routeModel) == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "model must not be empty")
+		return
+	}
+
+	provider, ok := selectProvider(h.Cfg, routeModel)
+	if !ok {
+		writeError(w, http.StatusNotImplemented, "not_configured", "No provider configured")
+		return
+	}
+
+	upstreamURL := strings.TrimRight(provider.URL, "/")
+	if upstreamURL == "" {
+		writeError(w, http.StatusNotImplemented, "not_configured", "Provider URL is not configured")
+		return
+	}
+
+	// Rewrite only the top-level model field structurally, preserving nested
+	// JSON values. Leave the body untouched when no rewrite is needed or the
+	// payload is not a JSON object.
+	if routeModel != requestedModel {
+		if _, present := bodyObj["model"]; present {
+			rewritten, ok := rewriteModelFieldJSON(body, routeModel)
+			if !ok {
+				writeError(w, http.StatusBadRequest, "invalid_request", "Failed to rewrite request model")
+				return
+			}
+			body = rewritten
+		} else {
+			rewritten, ok := injectModelField(body, routeModel)
+			if !ok {
+				writeError(w, http.StatusBadRequest, "invalid_request", "Failed to inject request model")
+				return
+			}
+			body = rewritten
+		}
 	}
 
 	target := upstreamURL + "/chat/completions"
@@ -157,7 +257,7 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if auth := h.Cfg.Upstream.Authorization; auth != "" {
+	if auth := provider.Authorization; auth != "" {
 		req.Header.Set("Authorization", auth)
 	}
 
@@ -296,6 +396,189 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+}
+
+func selectProvider(cfg config.Config, model string) (config.ProviderConfig, bool) {
+	providers := cfg.EffectiveProviders()
+	if len(providers) == 0 {
+		return config.ProviderConfig{}, false
+	}
+	// Prefer an exact model match over a catch-all wildcard, regardless of
+	// configuration order.
+	for _, p := range providers {
+		if p.APIType != config.ApiTypeChatCompletions {
+			continue
+		}
+		for _, m := range p.Models {
+			if m == model {
+				return p, true
+			}
+		}
+	}
+	for _, p := range providers {
+		if p.APIType != config.ApiTypeChatCompletions {
+			continue
+		}
+		for _, m := range p.Models {
+			if m == "*" {
+				return p, true
+			}
+		}
+	}
+	return config.ProviderConfig{}, false
+}
+
+
+func rewriteModelFieldJSON(body []byte, newModel string) ([]byte, bool) {
+	start, end, ok := findTopLevelModelValue(body)
+	if !ok || start >= len(body) || body[start] != '"' {
+		return nil, false
+	}
+	replacement := []byte(strconv.Quote(newModel))
+	out := make([]byte, 0, len(body)-(end-start)+len(replacement))
+	out = append(out, body[:start]...)
+	out = append(out, replacement...)
+	out = append(out, body[end:]...)
+	return out, true
+}
+
+
+
+func injectModelField(body []byte, newModel string) ([]byte, bool) {
+	i := 0
+	for i < len(body) && isJSONSpace(body[i]) {
+		i++
+	}
+	if i >= len(body) || body[i] != '{' {
+		return nil, false
+	}
+	depth := 0
+	inStr := false
+	closeIdx := -1
+	for j := i; j < len(body); j++ {
+		c := body[j]
+		if inStr {
+			if c == '\\' {
+				j++
+				continue
+			}
+			if c == '"' {
+				inStr = false
+			}
+			continue
+		}
+		if c == '"' {
+			inStr = true
+			continue
+		}
+		if c == '{' {
+			depth++
+		} else if c == '}' {
+			depth--
+			if depth == 0 {
+				closeIdx = j
+				break
+			}
+		}
+	}
+	if closeIdx < 0 {
+		return nil, false
+	}
+	empty := true
+	for j := i + 1; j < closeIdx; j++ {
+		if !isJSONSpace(body[j]) {
+			empty = false
+			break
+		}
+	}
+	replacement := []byte(strconv.Quote(newModel))
+	if empty {
+		out := make([]byte, 0, len(body)+len(replacement)+12)
+		out = append(out, body[:closeIdx]...)
+		out = append(out, []byte(`"model": `)...)
+		out = append(out, replacement...)
+		out = append(out, body[closeIdx:]...)
+		return out, true
+	}
+	end := closeIdx
+	for end > i+1 && isJSONSpace(body[end-1]) {
+		end--
+	}
+	out := make([]byte, 0, len(body)+len(replacement)+12)
+	out = append(out, body[:end]...)
+	out = append(out, []byte(`, "model": `)...)
+	out = append(out, replacement...)
+	out = append(out, body[closeIdx:]...)
+	return out, true
+}
+
+
+func countTopLevelKeys(body []byte, keyName string) int {
+	count := 0
+	i := 0
+	for i < len(body) && isJSONSpace(body[i]) {
+		i++
+	}
+	if i >= len(body) || body[i] != '{' {
+		return 0
+	}
+	i++
+	for i < len(body) {
+		for i < len(body) && isJSONSpace(body[i]) {
+			i++
+		}
+		if i >= len(body) || body[i] == '}' {
+			break
+		}
+		if body[i] != '"' {
+			return count
+		}
+		keyStart := i
+		i++
+		for i < len(body) {
+			if body[i] == '\\' {
+				i++
+				if i < len(body) {
+					i++
+				}
+				continue
+			}
+			if body[i] == '"' {
+				i++
+				break
+			}
+			i++
+		}
+		if i <= keyStart+1 {
+			return count
+		}
+		key := string(body[keyStart+1 : i-1])
+		var unquoted string
+		if err := json.Unmarshal(body[keyStart:i], &unquoted); err == nil {
+			key = unquoted
+		}
+		for i < len(body) && isJSONSpace(body[i]) {
+			i++
+		}
+		if i >= len(body) || body[i] != ':' {
+			return count
+		}
+		i++
+		for i < len(body) && isJSONSpace(body[i]) {
+			i++
+		}
+		i = skipJSONValue(body, i)
+		if key == keyName {
+			count++
+		}
+		for i < len(body) && isJSONSpace(body[i]) {
+			i++
+		}
+		if i < len(body) && body[i] == ',' {
+			i++
+		}
+	}
+	return count
 }
 
 func (h *ChatHandler) logger() *slog.Logger {
@@ -473,4 +756,153 @@ func readBodyWithContext(ctx context.Context, r io.ReadCloser, max int64) ([]byt
 		// Do not consume a post-close result; it may be partial/EOF.
 		return nil, ctx.Err()
 	}
+}
+
+func skipJSONValue(body []byte, i int) int {
+	if i >= len(body) {
+		return i
+	}
+	switch body[i] {
+	case '"':
+		i++
+		for i < len(body) {
+			if body[i] == '\\' {
+				i++
+				if i < len(body) {
+					i++
+				}
+				continue
+			}
+			if body[i] == '"' {
+				return i + 1
+			}
+			i++
+		}
+		return i
+	case '{', '[':
+		open := body[i]
+		close := byte('}')
+		if open == '[' {
+			close = ']'
+		}
+		depth := 0
+		inStr := false
+		for i < len(body) {
+			c := body[i]
+			if inStr {
+				if c == '\\' {
+					i++
+					if i < len(body) {
+						i++
+					}
+					continue
+				}
+				if c == '"' {
+					inStr = false
+				}
+				i++
+				continue
+			}
+			if c == '"' {
+				inStr = true
+				i++
+				continue
+			}
+			if c == open {
+				depth++
+			} else if c == close {
+				depth--
+				if depth == 0 {
+					return i + 1
+				}
+			}
+			i++
+		}
+		return i
+	default:
+		for i < len(body) && body[i] != ',' && body[i] != '}' && body[i] != ']' && !isJSONSpace(body[i]) {
+			i++
+		}
+		return i
+	}
+}
+
+func isJSONSpace(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\n' || b == '\r'
+}
+
+func findTopLevelModelValue(body []byte) (int, int, bool) {
+	i := 0
+	for i < len(body) && isJSONSpace(body[i]) {
+		i++
+	}
+	if i >= len(body) || body[i] != '{' {
+		return -1, -1, false
+	}
+	i++
+	found := false
+	var foundStart, foundEnd int
+	for i < len(body) {
+		for i < len(body) && isJSONSpace(body[i]) {
+			i++
+		}
+		if i >= len(body) || body[i] == '}' {
+			break
+		}
+		if body[i] != '"' {
+			return -1, -1, false
+		}
+		keyStart := i
+		i++
+		for i < len(body) {
+			if body[i] == '\\' {
+				i++
+				if i < len(body) {
+					i++
+				}
+				continue
+			}
+			if body[i] == '"' {
+				i++
+				break
+			}
+			i++
+		}
+		if i <= keyStart+1 {
+			return -1, -1, false
+		}
+		key := string(body[keyStart+1 : i-1])
+		var unquoted string
+		if err := json.Unmarshal(body[keyStart:i], &unquoted); err == nil {
+			key = unquoted
+		}
+		for i < len(body) && isJSONSpace(body[i]) {
+			i++
+		}
+		if i >= len(body) || body[i] != ':' {
+			return -1, -1, false
+		}
+		i++
+		for i < len(body) && isJSONSpace(body[i]) {
+			i++
+		}
+		valueStart := i
+		valueEnd := skipJSONValue(body, i)
+		if key == "model" {
+			found = true
+			foundStart = valueStart
+			foundEnd = valueEnd
+		}
+		i = valueEnd
+		for i < len(body) && isJSONSpace(body[i]) {
+			i++
+		}
+		if i < len(body) && body[i] == ',' {
+			i++
+		}
+	}
+	if !found {
+		return -1, -1, false
+	}
+	return foundStart, foundEnd, true
 }
