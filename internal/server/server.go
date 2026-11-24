@@ -43,10 +43,6 @@ func New(cfg config.Config, logger *slog.Logger) *Server {
 
 	adminStore := admin.NewStore()
 
-	if os.Getenv("GATEWAY_ADMIN_USERNAME") != "" || os.Getenv("GATEWAY_ADMIN_PASSWORD") != "" {
-		logger.Warn("GATEWAY_ADMIN_USERNAME/PASSWORD are no longer supported; create the initial admin via the /admin first-run setup flow")
-	}
-
 	dbPath := os.Getenv("GATEWAY_DB_PATH")
 	if dbPath == "" {
 		dbPath = "gateway.db"
