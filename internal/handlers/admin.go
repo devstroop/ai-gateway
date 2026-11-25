@@ -368,15 +368,6 @@ func (h *AdminHandlers) DeleteRuntime(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *AdminHandlers) withAdmin(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if !requireAdmin(h.Store, w, r) {
-			return
-		}
-		next(w, r)
-	}
-}
-
 func trustProxy() bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("GATEWAY_TRUST_PROXY")))
 	return v == "1" || v == "true" || v == "yes"

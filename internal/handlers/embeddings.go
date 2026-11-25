@@ -128,7 +128,6 @@ func (h *EmbeddingsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if !selectedSet {
 			selected = usable[0]
-			selectedSet = true
 		}
 	}
 

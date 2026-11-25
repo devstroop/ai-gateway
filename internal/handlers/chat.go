@@ -385,7 +385,7 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Header().Add(k, v)
 		}
 	}
-	flush := func() {}
+	var flush func()
 	if f, ok := w.(http.Flusher); ok {
 		flush = f.Flush
 	} else {

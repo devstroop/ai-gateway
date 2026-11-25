@@ -48,7 +48,7 @@ func migrate(db *sql.DB) error {
 	if err != nil {
 		return fmt.Errorf("migrate begin: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS runtime_settings (
 			key TEXT PRIMARY KEY,

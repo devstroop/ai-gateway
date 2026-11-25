@@ -13,11 +13,6 @@ import (
 
 const maxCachedTransports = 64
 
-type transportCacheEntry struct {
-	tr  http.RoundTripper
-	key string
-}
-
 var (
 	transportCacheMu sync.Mutex
 	transportCache   = map[string]http.RoundTripper{}
