@@ -50,3 +50,26 @@ go test ./...
 ## Admin store persistence
 
 The admin store is in-memory. Admin accounts are created via the first-run setup flow at `/admin` (one-time; once an admin exists, setup is disabled). `GATEWAY_ADMIN_USERNAME`/`GATEWAY_ADMIN_PASSWORD` are no longer supported. Persistence is planned for a later phase.
+
+
+## Frontend
+
+The `web/` directory is a Vite + React 19 app built on the Astryx design system, with
+client-side data fetching (TanStack Query) against the Go API.
+
+```bash
+cd web
+npm install
+npm run dev   # http://localhost:5173, proxies /health, /v1, /api to :8080
+npm run build # outputs to web/dist
+```
+
+The Go server stays a pure JSON API; run it separately (`go run ./cmd/server`) during development.
+
+
+## Tests
+
+```bash
+go test ./...
+cd web && npm run test
+```
