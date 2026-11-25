@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build release artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          VERSION="${GITHUB_REF_NAME}"
+          LDFLAGS="-s -w"
+          targets=(
+            "linux amd64"
+            "linux arm64"
+            "darwin amd64"
+            "darwin arm64"
+            "windows amd64"
+            "windows arm64"
+          )
+          for t in "${targets[@]}"; do
+            read -r goos goarch <<< "$t"
+            ext=""
+            archive_ext="tar.gz"
+            if [ "$goos" = "windows" ]; then
+              ext=".exe"
+              archive_ext="zip"
+            fi
+            bin="ai-gateway${ext}"
+            outdir="dist/ai-gateway_${VERSION}_${goos}_${goarch}"
+            mkdir -p "$outdir"
+            GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 go build -ldflags="$LDFLAGS" -o "$outdir/$bin" ./cmd/server
+            if [ "$archive_ext" = "zip" ]; then
+              (cd dist && zip -r "ai-gateway_${VERSION}_${goos}_${goarch}.zip" "ai-gateway_${VERSION}_${goos}_${goarch}")
+            else
+              (cd dist && tar -czf "ai-gateway_${VERSION}_${goos}_${goarch}.tar.gz" "ai-gateway_${VERSION}_${goos}_${goarch}")
+            fi
+            rm -rf "$outdir"
+          done
+          (cd dist && sha256sum * > checksums.txt)
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*
+          generate_release_notes: true
