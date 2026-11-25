@@ -138,6 +138,10 @@ func New(cfg config.Config, logger *slog.Logger) *Server {
 	}
 	mux.HandleFunc("/v1/responses", responsesHandler.ServeHTTP)
 
+	if dir := staticDir(); dir != "" {
+		mux.HandleFunc("/", spaHandler(dir).ServeHTTP)
+	}
+
 	// Middleware order (outermost -> innermost): Recover -> RequestID -> Logging -> mux.
 	// Recover is outermost to catch panics from RequestID; Logging folds its own
 	// recovery for the inner chain. RequestID must wrap Logging so the request
