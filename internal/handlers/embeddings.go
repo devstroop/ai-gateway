@@ -162,7 +162,7 @@ func (h *EmbeddingsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "upstream_error", "Embedding sidecar unreachable")
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 500 {
 		breaker.RecordFailure()
 	} else if resp.StatusCode < 400 {

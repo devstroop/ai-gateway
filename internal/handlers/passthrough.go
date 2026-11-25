@@ -211,7 +211,7 @@ func (h *PassthroughHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	resp, err := client.Do(req)
 	if err != nil {
 		if resp != nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(reqCtx.Err(), context.Canceled) {
 			breaker.ReleaseProbe()
@@ -230,7 +230,7 @@ func (h *PassthroughHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "upstream_error", "Upstream request failed")
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 500 {
 		breaker.RecordFailure()

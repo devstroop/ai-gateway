@@ -175,18 +175,18 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 		defer cancel()
 		if err := s.http.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			if s.db != nil {
-				s.db.Close()
+				_ = s.db.Close()
 			}
 			return err
 		}
 		if err := <-errCh; err != nil && !errors.Is(err, http.ErrServerClosed) {
 			if s.db != nil {
-				s.db.Close()
+				_ = s.db.Close()
 			}
 			return err
 		}
 		if s.db != nil {
-			s.db.Close()
+			_ = s.db.Close()
 		}
 		return nil
 	}

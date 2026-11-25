@@ -29,15 +29,15 @@ func Open(path string) (*DB, error) {
 	db.SetMaxOpenConns(1)
 	// Busy timeout + WAL for better concurrency.
 	if _, err := db.Exec(`PRAGMA busy_timeout = 5000`); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("set busy_timeout: %w", err)
 	}
 	if _, err := db.Exec(`PRAGMA journal_mode = WAL`); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("set wal: %w", err)
 	}
 	if err := migrate(db); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, err
 	}
 	return &DB{DB: db}, nil

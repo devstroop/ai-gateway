@@ -288,7 +288,7 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	resp, err := client.Do(req)
 	if err != nil {
 		if resp != nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(reqCtx.Err(), context.Canceled) {
 			breaker.ReleaseProbe()
@@ -307,7 +307,7 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "upstream_error", "Upstream request failed")
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 500 {
 		breaker.RecordFailure()
@@ -321,7 +321,7 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		select {
 		case <-reqCtx.Done():
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		case <-done:
 		}
 	}()
@@ -746,7 +746,7 @@ func connectionHeaderValues(h http.Header) []string {
 }
 
 func readBodyWithContext(ctx context.Context, r io.ReadCloser, max int64) ([]byte, error) {
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	type result struct {
 		data []byte
 		err  error
@@ -839,9 +839,10 @@ func skipJSONValue(body []byte, i int) int {
 				i++
 				continue
 			}
-			if c == open {
+			switch c {
+			case open:
 				depth++
-			} else if c == close {
+			case close:
 				depth--
 				if depth == 0 {
 					return i + 1
