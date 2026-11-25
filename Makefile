@@ -1,7 +1,7 @@
 .PHONY: build test lint run
 
 build:
-	go build -o bin/ai-gateway-go ./cmd/server
+	go build -o bin/ai-gateway ./cmd/server
 
 test:
 	go test ./...

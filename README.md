@@ -1,4 +1,4 @@
-# ai-gateway-go
+# ai-gateway
 
 A Go implementation of the ai-gateway service.
 
@@ -25,7 +25,7 @@ PORT=9090 go run ./cmd/server
 ## Build
 
 ```bash
-go build -o bin/ai-gateway-go ./cmd/server
+go build -o bin/ai-gateway ./cmd/server
 ```
 
 ## Test

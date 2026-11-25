@@ -3,9 +3,9 @@ WORKDIR /src
 COPY go.mod go.sum* ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /out/ai-gateway-go ./cmd/server
+RUN CGO_ENABLED=0 go build -o /out/ai-gateway ./cmd/server
 
 FROM gcr.io/distroless/static-debian12
-COPY --from=build /out/ai-gateway-go /ai-gateway-go
+COPY --from=build /out/ai-gateway /ai-gateway
 EXPOSE 8080
-ENTRYPOINT ["/ai-gateway-go"]
+ENTRYPOINT ["/ai-gateway"]
