@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/devstroop/ai-gateway-go/internal/auth"
+	"github.com/devstroop/ai-gateway/internal/auth"
 )
 
 func Whoami(w http.ResponseWriter, r *http.Request) {

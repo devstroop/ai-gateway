@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/devstroop/ai-gateway-go/internal/config"
+	"github.com/devstroop/ai-gateway/internal/config"
 )
 
 type Identity struct {

@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/devstroop/ai-gateway-go/internal/admin"
-	"github.com/devstroop/ai-gateway-go/internal/storage"
+	"github.com/devstroop/ai-gateway/internal/admin"
+	"github.com/devstroop/ai-gateway/internal/storage"
 )
 
 type AdminHandlers struct {

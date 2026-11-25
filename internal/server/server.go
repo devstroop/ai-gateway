@@ -10,13 +10,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/devstroop/ai-gateway-go/internal/admin"
-	"github.com/devstroop/ai-gateway-go/internal/auth"
-	"github.com/devstroop/ai-gateway-go/internal/config"
-	"github.com/devstroop/ai-gateway-go/internal/handlers"
-	"github.com/devstroop/ai-gateway-go/internal/health"
-	"github.com/devstroop/ai-gateway-go/internal/middleware"
-	"github.com/devstroop/ai-gateway-go/internal/storage"
+	"github.com/devstroop/ai-gateway/internal/admin"
+	"github.com/devstroop/ai-gateway/internal/auth"
+	"github.com/devstroop/ai-gateway/internal/config"
+	"github.com/devstroop/ai-gateway/internal/handlers"
+	"github.com/devstroop/ai-gateway/internal/health"
+	"github.com/devstroop/ai-gateway/internal/middleware"
+	"github.com/devstroop/ai-gateway/internal/storage"
 )
 
 type Server struct {

@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devstroop/ai-gateway-go/internal/config"
-	"github.com/devstroop/ai-gateway-go/internal/proxy"
-	"github.com/devstroop/ai-gateway-go/internal/resilience"
+	"github.com/devstroop/ai-gateway/internal/config"
+	"github.com/devstroop/ai-gateway/internal/proxy"
+	"github.com/devstroop/ai-gateway/internal/resilience"
 )
 
 type PassthroughHandler struct {

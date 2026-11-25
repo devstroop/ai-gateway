@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/devstroop/ai-gateway-go/internal/config"
-	"github.com/devstroop/ai-gateway-go/internal/proxy"
-	"github.com/devstroop/ai-gateway-go/internal/resilience"
+	"github.com/devstroop/ai-gateway/internal/config"
+	"github.com/devstroop/ai-gateway/internal/proxy"
+	"github.com/devstroop/ai-gateway/internal/resilience"
 )
 
 type EmbeddingsHandler struct {

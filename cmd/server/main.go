@@ -7,9 +7,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/devstroop/ai-gateway-go/internal/config"
-	"github.com/devstroop/ai-gateway-go/internal/logging"
-	"github.com/devstroop/ai-gateway-go/internal/server"
+	"github.com/devstroop/ai-gateway/internal/config"
+	"github.com/devstroop/ai-gateway/internal/logging"
+	"github.com/devstroop/ai-gateway/internal/server"
 )
 
 func main() {

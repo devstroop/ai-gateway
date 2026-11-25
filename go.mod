@@ -1,4 +1,4 @@
-module github.com/devstroop/ai-gateway-go
+module github.com/devstroop/ai-gateway
 
 go 1.26.0
 

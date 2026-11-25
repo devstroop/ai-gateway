@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/devstroop/ai-gateway-go/internal/config"
+	"github.com/devstroop/ai-gateway/internal/config"
 )
 
 func TestChatProxy(t *testing.T) {
