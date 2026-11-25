@@ -1,10 +1,6 @@
 services:
   ai-gateway:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: runtime
-    image: ai-gateway:latest
+    image: ghcr.io/devstroop/ai-gateway:${AI_GATEWAY_VERSION:-latest}
     container_name: ai-gateway
     ports:
       - "${PORT:-8080}:8080"
