@@ -31,7 +31,19 @@ func New(cfg config.Config, logger *slog.Logger) *Server {
 	mux.HandleFunc("/health", health.Health)
 	mux.HandleFunc("/ready", health.ReadyHandler(nil))
 
-	chatHandler := handlers.NewChatHandler(cfg, logger)
+	hasChatProvider := false
+	for _, p := range cfg.EffectiveProviders() {
+		if p.APIType == "" || p.APIType == config.ApiTypeChatCompletions {
+			hasChatProvider = true
+			break
+		}
+	}
+	var chatHandler http.Handler
+	if hasChatProvider {
+		chatHandler = handlers.NewChatHandler(cfg, logger)
+	} else {
+		chatHandler = handlers.NewChatBridgeHandler(cfg, logger)
+	}
 	mux.HandleFunc("/v1/chat/completions", chatHandler.ServeHTTP)
 
 	modelsHandler := handlers.NewModelsHandler(cfg, logger)
@@ -94,10 +106,36 @@ func New(cfg config.Config, logger *slog.Logger) *Server {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	})
 
-	messagesHandler := handlers.NewPassthroughHandler(cfg, logger, "/messages", []config.ApiType{config.ApiTypeMessages})
+	// Prefer a native messages provider; otherwise bridge /v1/messages over a
+	// chat-completions provider.
+	hasMessagesProvider := false
+	for _, p := range cfg.EffectiveProviders() {
+		if p.APIType == config.ApiTypeMessages {
+			hasMessagesProvider = true
+			break
+		}
+	}
+	var messagesHandler http.Handler
+	if hasMessagesProvider {
+		messagesHandler = handlers.NewPassthroughHandler(cfg, logger, "/messages", []config.ApiType{config.ApiTypeMessages})
+	} else {
+		messagesHandler = handlers.NewMessagesBridgeHandler(cfg, logger)
+	}
 	mux.HandleFunc("/v1/messages", messagesHandler.ServeHTTP)
 
-	responsesHandler := handlers.NewPassthroughHandler(cfg, logger, "/responses", []config.ApiType{config.ApiTypeResponses})
+	hasResponsesProvider := false
+	for _, p := range cfg.EffectiveProviders() {
+		if p.APIType == config.ApiTypeResponses {
+			hasResponsesProvider = true
+			break
+		}
+	}
+	var responsesHandler http.Handler
+	if hasResponsesProvider {
+		responsesHandler = handlers.NewPassthroughHandler(cfg, logger, "/responses", []config.ApiType{config.ApiTypeResponses})
+	} else {
+		responsesHandler = handlers.NewResponsesBridgeHandler(cfg, logger)
+	}
 	mux.HandleFunc("/v1/responses", responsesHandler.ServeHTTP)
 
 	// Middleware order (outermost -> innermost): Recover -> RequestID -> Logging -> mux.
