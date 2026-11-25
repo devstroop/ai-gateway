@@ -1,0 +1,9 @@
+.git
+.gitignore
+*.db
+*.db-shm
+*.db-wal
+bin/
+tmp/
+.air.toml
+docker-compose*.yml

@@ -1,0 +1,24 @@
+services:
+  ai-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    container_name: ai-gateway-dev
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      CONFIG_PATH: /app/config.example.toml
+      GATEWAY_DB_PATH: /tmp/gateway.db
+      LOG_LEVEL: debug
+    volumes:
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    working_dir: /app
+    command: go run ./cmd/server
+    restart: "no"
+
+volumes:
+  go-mod-cache:
+  go-build-cache:
