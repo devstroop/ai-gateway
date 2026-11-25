@@ -35,7 +35,7 @@ func (h *ModelsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	seen := map[string]bool{}
 	ownedBy := h.Cfg.OwnedBy
 	if ownedBy == "" {
-		ownedBy = "ai-gateway-go"
+		ownedBy = "ai-gateway"
 	}
 	// Listed IDs are the raw provider model names. Chat routing also accepts
 	// configured prefixes (stripped) and ModelMap aliases, so clients may use

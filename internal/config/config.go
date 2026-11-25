@@ -66,7 +66,7 @@ func Default() Config {
 		LogLevel:      "info",
 		DefaultModel:  "default",
 		TimeoutMs:     30000,
-		OwnedBy:       "ai-gateway-go",
+		OwnedBy:       "ai-gateway",
 		ModelMap:      map[string]string{},
 		ModelPrefixes: []string{},
 	}
