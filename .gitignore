@@ -10,3 +10,8 @@
 # SQLite sidecars
 *.db-shm
 *.db-wal
+
+# Frontend
+web/node_modules/
+web/dist/
+web/.vite/
